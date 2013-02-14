@@ -23,14 +23,17 @@ endif
 
 libpeas_1_0_la_LIBADD = $(PEAS_LIBS)
 
-INST_H_FILES =			\
-	peas-plugin-info.h	\
-	peas-object-module.h	\
-	peas-extension-base.h	\
-	peas-extension.h	\
-	peas-extension-set.h	\
-	peas-activatable.h	\
-	peas-engine.h		\
+INST_H_FILES =				\
+	peas-plugin-info.h		\
+	peas-object-module.h		\
+	peas-extension-base.h		\
+	peas-extension.h		\
+	peas-extension-set.h		\
+	peas-activatable.h		\
+	peas-engine.h			\
+	peas-interpreter.h		\
+	peas-interpreter-completion.h	\
+	peas-interpreter-signals.h	\
 	peas.h
 
 NOINST_H_FILES =			\
@@ -53,6 +56,9 @@ C_FILES =				\
 	peas-extension-base.c		\
 	peas-extension-set.c		\
 	peas-i18n.c			\
+	peas-interpreter.c		\
+	peas-interpreter-completion.c	\
+	peas-interpreter-signals.c	\
 	peas-introspection.c		\
 	peas-object-module.c		\
 	peas-plugin-info.c		\

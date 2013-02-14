@@ -176,6 +176,34 @@ peas_dirs_get_plugin_loaders_dir (void)
 }
 
 gchar *
+peas_dirs_get_plugins_dir (void)
+{
+  gchar *lib_dir;
+  gchar *plugins_dir;
+
+  lib_dir = peas_dirs_get_lib_dir ();
+  plugins_dir = g_build_filename (lib_dir, "plugins", NULL);
+
+  g_free (lib_dir);
+
+  return plugins_dir;
+}
+
+gchar *
+peas_dirs_get_plugins_data_dir (void)
+{
+  gchar *data_dir;
+  gchar *plugins_data_dir;
+
+  data_dir = peas_dirs_get_data_dir ();
+  plugins_data_dir = g_build_filename (data_dir, "plugins", NULL);
+
+  g_free (data_dir);
+
+  return plugins_data_dir;
+}
+
+gchar *
 peas_dirs_get_locale_dir (void)
 {
   gchar *locale_dir;

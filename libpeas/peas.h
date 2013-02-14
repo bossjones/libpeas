@@ -25,6 +25,9 @@
 #include "peas-extension.h"
 #include "peas-extension-base.h"
 #include "peas-extension-set.h"
+#include "peas-interpreter.h"
+#include "peas-interpreter-completion.h"
+#include "peas-interpreter-signals.h"
 #include "peas-object-module.h"
 #include "peas-plugin-info.h"
 

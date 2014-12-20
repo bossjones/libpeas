@@ -188,6 +188,20 @@ peas_interpreter_prompt (PeasInterpreter *interpreter)
 }
 
 /**
+ * peas_interpreter_reset:
+ * @interpreter: A #PeasInterpreter.
+ *
+ * Emits the "reset" signal.
+ */
+void
+peas_interpreter_reset (PeasInterpreter *interpreter)
+{
+  g_return_if_fail (PEAS_IS_INTERPRETER (interpreter));
+
+  g_signal_emit (interpreter, signals[RESET], 0);
+}
+
+/**
  * peas_interpreter_write:
  * @interpreter: A #PeasInterpreter.
  * @text: text to write.
@@ -220,20 +234,6 @@ peas_interpreter_write_error (PeasInterpreter *interpreter,
 
 
   g_signal_emit (interpreter, signals[WRITE_ERROR], 0, text);
-}
-
-/**
- * peas_interpreter_reset:
- * @interpreter: A #PeasInterpreter.
- *
- * Emits the "reset" signal.
- */
-void
-peas_interpreter_reset (PeasInterpreter *interpreter)
-{
-  g_return_if_fail (PEAS_IS_INTERPRETER (interpreter));
-
-  g_signal_emit (interpreter, signals[RESET], 0);
 }
 
 /**

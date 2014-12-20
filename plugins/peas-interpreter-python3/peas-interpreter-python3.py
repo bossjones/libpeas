@@ -22,6 +22,7 @@
 # Parts from "Interactive Python-GTK Console" (stolen from epiphany's console.py)
 #     Copyright (C), 1998 James Henstridge <james@daa.com.au>
 #     Copyright (C), 2005 Adam Hooper <adamh@densi.com>
+#
 # Bits from gedit Python Console Plugin
 #     Copyrignt (C), 2005 Raphaël Slinckx
 
@@ -34,73 +35,81 @@ import traceback
 from gi.repository import GObject, Peas
 
 
+# TODO: implement an IPython mode?
+# IPython Console used in Accerciser
+#   https://git.gnome.org/browse/accerciser/tree/plugins/ipython_view.py
+
 class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
     def __init__(self):
-        GObject.Object.__init__(self)
+        super(PeasInterpreterPython3, self).__init__()
 
         self.connect("reset", self.on_reset)
 
-        self._stdout = FakeFile(self.write, sys.stdout.fileno())
-        self._stderr = FakeFile(self.write_error, sys.stderr.fileno())
+        self.__stdout = FakeFile(self.write, sys.stdout.fileno())
+        self.__stderr = FakeFile(self.write_error, sys.stderr.fileno())
 
         self.do_set_namespace(None)
 
     def do_prompt(self):
-        if not self._in_block and not self._in_multiline:
-            if hasattr(sys, "ps1"):
-                return sys.ps1
+        if not self.__in_block and not self.__in_multiline:
+            if hasattr(sys, 'ps1'):
+                return str(sys.ps1)
 
         else:
-            if hasattr(sys, "ps2"):
-                return sys.ps2
+            if hasattr(sys, 'ps2'):
+                return (sys.ps2)
 
-        return ""
+        return ''
 
     def do_execute(self, code):
         success = False
 
-        # We only get passed an exact statment
-        self._code += code + "\n"
+        # We only get passed an exact statement
+        # str.join()?
+        self.__code += code + '\n'
 
-        if self._code.rstrip().endswith(":") or \
-              (self._in_block and not self._code.endswith("\n\n")):
-            self._in_block = True
+        if self.__code.rstrip().endswith(':') or \
+              (self.__in_block and not self.__code.endswith('\n\n')):
+            self.__in_block = True
             return
 
-        elif self._code.endswith("\\"):
-            self._in_multiline = True
+        elif self.__code.endswith('\\'):
+            self.__in_multiline = True
             return
 
-        sys.stdout, self._stdout = self._stdout, sys.stdout
-        sys.stderr, self._stderr = self._stderr, sys.stderr
+        sys.stdout, self.__stdout = self.__stdout, sys.stdout
+        sys.stderr, self.__stderr = self.__stderr, sys.stderr
 
         try:
             try:
-                retval = eval(self._code, self._namespace, self._namespace)
-
-                # This also sets '_'. Bug #607963
-                sys.displayhook(retval)
+                retval = eval(self.__code, self.__namespace, self.__namespace)
 
             except SyntaxError:
-                exec(self._code, self._namespace)
+                exec(self.__code, self.__namespace)
+
+            else:
+                # This also sets '_'. Bug #607963
+                sys.displayhook(retval)
 
         except SystemExit:
             self.reset()
 
         except:
+            # TODO: sys.excepthook(*sys.exc_info())
+
             # Cause only one write-error to be emitted,
             # using traceback.print_exc() would cause multiple.
-            self.write_error(traceback.format_exc())
+            self.write_error(traceback.format_exc(0))
 
         else:
             success = True
 
-        sys.stdout, self._stdout = self._stdout, sys.stdout
-        sys.stderr, self._stderr = self._stderr, sys.stderr
+        sys.stdout, self.__stdout = self.__stdout, sys.stdout
+        sys.stderr, self.__stderr = self.__stderr, sys.stderr
 
-        self._code = ""
-        self._in_block = False
-        self._in_multiline = False
+        self.__code = ''
+        self.__in_block = False
+        self.__in_multiline = False
 
         return success
 
@@ -111,18 +120,18 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
             words = code.split()
 
             if len(words) == 0:
-                word = ""
+                word = ''
                 text_prefix = code
             else:
                 word = words[-1]
                 text_prefix = code[:-len(word)]
 
-            for match in self._completer.global_matches(word):
-                # The "(" messes with GTK+'s text wrapping
-                if match.endswith("("):
+            for match in self.__completer.global_matches(word):
+                # The '(' messes with GTK+'s text wrapping
+                if match.endswith('('):
                     match = match[:-1]
                 else:
-                    match += " "
+                    match += ' '
 
                 text = text_prefix + match
                 completion = Peas.InterpreterCompletion.new(match, text)
@@ -134,34 +143,34 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
         return completions
 
     def do_get_namespace(self):
-        return self._original_namespace
+        return self.__original_namespace
 
     def do_set_namespace(self, namespace):
         if namespace is None:
-            self._original_namespace = {}
+            self.__original_namespace = {}
 
         else:
-            self._original_namespace = namespace
+            self.__original_namespace = namespace
 
         self.on_reset()
 
     # Isn't this automatically setup for up?
     def on_reset(self, unused=None):
-        self._code = ""
-        self._in_block = False
-        self._in_multiline = False
+        self.__code = ''
+        self.__in_block = False
+        self.__in_multiline = False
 
-        sys.ps1 = ">>> "
-        sys.ps2 = "... "
+        sys.ps1 = '>>> '
+        sys.ps2 = '... '
 
-        self._namespace = copy.copy(self._original_namespace)
+        self.__namespace = copy.copy(self.__original_namespace)
 
-        if os.getenv("PEAS_DEBUG") is not None:
-            if not self._namespace.has_key("self"):
-                self._namespace["self"] = self
+        if os.getenv('PEAS_DEBUG') is not None:
+            if not self.__namespace.has_key('self'):
+                self.__namespace['self'] = self
 
         try:
-            self._completer = rlcompleter.Completer(self._namespace)
+            self.__completer = rlcompleter.Completer(self.__namespace)
 
         except:
             pass
@@ -170,21 +179,44 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
 class FakeFile:
     """A fake output file object."""
 
-    def __init__(self, func, fn):
-        self._func = func
-        self._fn = fn
+    def __init__(self, fn, callback):
+        self.__callback = callback
+        self.__fn = fn
 
-    def close(self):         pass
-    def flush(self):         pass
-    def fileno(self):        return self._fn
-    def isatty(self):        return 0
-    def read(self, a):       return ''
-    def readline(self):      return ''
-    def readlines(self):     return []
-    def write(self, s):      self._func(s)
-    def writelines(self, l): self._func(l)
-    def seek(self, a):       raise IOError((29, "Illegal seek"))
-    def tell(self):          raise IOError((29, "Illegal seek"))
-    truncate = tell
+    def close(self):
+         pass
+
+    def fileno(self):
+        return self.__fn
+
+    def flush(self):
+         pass
+
+    def isatty(self):
+        return False
+
+    def read(self, size=None):
+        raise IOError('File not open for reading')
+
+    def readline(self, size=None):
+        raise IOError('File not open for reading')
+
+    def readlines(self, size=None):
+        raise IOError('File not open for reading')
+
+    def seek(self, offset, whence=0):
+        raise IOError(29, 'Illegal seek')
+
+    def tell(self):
+        raise IOError(29, 'Illegal seek')
+
+    def truncate(self, size=None):
+        raise IOError(29, 'Illegal seek')
+
+    def write(self, string):
+        self.__callback(s)
+
+    def writelines(self, strings):
+        self.__callback(''.join(strings))
 
 # ex:ts=4:et:

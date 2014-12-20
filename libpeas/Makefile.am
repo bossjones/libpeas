@@ -33,7 +33,6 @@ INST_H_FILES =				\
 	peas-engine.h			\
 	peas-interpreter.h		\
 	peas-interpreter-completion.h	\
-	peas-interpreter-signals.h	\
 	peas.h
 
 NOINST_H_FILES =			\
@@ -58,7 +57,6 @@ C_FILES =				\
 	peas-i18n.c			\
 	peas-interpreter.c		\
 	peas-interpreter-completion.c	\
-	peas-interpreter-signals.c	\
 	peas-introspection.c		\
 	peas-object-module.c		\
 	peas-plugin-info.c		\

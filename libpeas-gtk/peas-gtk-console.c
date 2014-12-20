@@ -51,12 +51,11 @@
  * them (when appropriate) to do what should be done in a console.
  */
 
-struct _PeasGtkConsolePrivate {
+typedef struct {
   /*GSettings *console_settings;*/
   GSettings *desktop_settings;
 
   PeasInterpreter *interpreter;
-  PeasInterpreterSignals *interpreter_signals;
 
   GtkScrolledWindow *sw;
   GtkTextView *text_view;
@@ -70,7 +69,7 @@ struct _PeasGtkConsolePrivate {
   gchar *history_statement;
 
   guint scroll_id;
-};
+} PeasGtkConsolePrivate;
 
 /* Properties */
 enum {
@@ -81,7 +80,10 @@ enum {
 
 static GParamSpec *properties[N_PROPERTIES] = { NULL };
 
-G_DEFINE_TYPE(PeasGtkConsole, peas_gtk_console, GTK_TYPE_BOX)
+G_DEFINE_TYPE_WITH_PRIVATE(PeasGtkConsole, peas_gtk_console, GTK_TYPE_BOX)
+
+#define GET_PRIV(o) \
+  (peas_gtk_console_get_instance_private (o))
 
 /* The default monospace-font-name in gsettings-desktop-schemas */
 #define DEFAULT_FONT "Monospace 11"
@@ -93,17 +95,18 @@ G_DEFINE_TYPE(PeasGtkConsole, peas_gtk_console, GTK_TYPE_BOX)
 static void
 font_settings_changed_cb (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
   PangoFontDescription *font_desc = NULL;
 
   /* If a new key is used then the GSettings changed signal
    * for that key must be connected to in peas_gtk_console_init().
    */
 
-  if (console->priv->desktop_settings != NULL)
+  if (priv->desktop_settings != NULL)
     {
       gchar *font_name;
 
-      font_name = g_settings_get_string (console->priv->desktop_settings,
+      font_name = g_settings_get_string (priv->desktop_settings,
                                          "monospace-font-name");
       font_desc = pango_font_description_from_string (font_name);
 
@@ -115,13 +118,14 @@ font_settings_changed_cb (PeasGtkConsole *console)
 
   if (font_desc != NULL)
     {
-      gtk_widget_override_font (GTK_WIDGET (console->priv->text_view),
+      gtk_widget_override_font (GTK_WIDGET (priv->text_view),
                                 font_desc);
 
       pango_font_description_free (font_desc);
     }
 }
 
+/* TODO: Replace with new GSettings API */
 static GSettings *
 settings_try_new (const gchar *schema)
 {
@@ -145,33 +149,37 @@ settings_try_new (const gchar *schema)
 static gboolean
 real_scroll_to_end (PeasGtkConsole *console)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextIter end;
 
   gtk_text_buffer_get_end_iter (text_buffer, &end);
 
   gtk_text_buffer_place_cursor (text_buffer, &end);
-  gtk_text_view_scroll_to_iter (console->priv->text_view,
+  gtk_text_view_scroll_to_iter (priv->text_view,
                                 &end, 0, TRUE, 0, 1);
 
-  console->priv->scroll_id = 0;
+  priv->scroll_id = 0;
   return FALSE;
 }
 
 static void
 scroll_to_end (PeasGtkConsole *console)
 {
-  if (console->priv->scroll_id != 0)
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
+  if (priv->scroll_id != 0)
     return;
 
-  console->priv->scroll_id = g_idle_add ((GSourceFunc) real_scroll_to_end,
-                                         console);
+  priv->scroll_id = g_idle_add ((GSourceFunc) real_scroll_to_end,
+                                console);
 }
 
 static gint
 compare_input (PeasGtkConsole *console)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextMark *insert_mark;
   GtkTextIter insert, input;
 
@@ -180,7 +188,7 @@ compare_input (PeasGtkConsole *console)
                                     &insert,
                                     insert_mark);
 
-  peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &input);
+  peas_gtk_console_buffer_get_input_iter (priv->buffer, &input);
 
   return gtk_text_iter_compare (&insert, &input);
 }
@@ -188,7 +196,8 @@ compare_input (PeasGtkConsole *console)
 static gboolean
 selection_starts_before_input (PeasGtkConsole *console)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextMark *selection_bound_mark;
   GtkTextIter input, selection_bound;
 
@@ -197,7 +206,7 @@ selection_starts_before_input (PeasGtkConsole *console)
                                     &selection_bound,
                                     selection_bound_mark);
 
-  peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &input);
+  peas_gtk_console_buffer_get_input_iter (priv->buffer, &input);
 
   return gtk_text_iter_compare (&selection_bound, &input) < 0;
 }
@@ -205,27 +214,27 @@ selection_starts_before_input (PeasGtkConsole *console)
 static void
 history_changed (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
   const gchar *statement;
 
-  if (console->priv->history_statement == NULL)
+  if (priv->history_statement == NULL)
     {
-      console->priv->history_statement =
-            peas_gtk_console_buffer_get_statement (console->priv->buffer);
+      priv->history_statement =
+            peas_gtk_console_buffer_get_statement (priv->buffer);
     }
 
-  statement = peas_gtk_console_history_get (console->priv->history);
+  statement = peas_gtk_console_history_get (priv->history);
 
   if (statement != NULL)
     {
-      peas_gtk_console_buffer_set_statement (console->priv->buffer, statement);
+      peas_gtk_console_buffer_set_statement (priv->buffer, statement);
     }
-  else if (console->priv->history_statement != NULL)
+  else if (priv->history_statement != NULL)
     {
-      peas_gtk_console_buffer_set_statement (console->priv->buffer,
-                                             console->priv->history_statement);
+      peas_gtk_console_buffer_set_statement (priv->buffer,
+                                             priv->history_statement);
 
-      g_free (console->priv->history_statement);
-      console->priv->history_statement = NULL;
+      g_clear_pointer (&priv->history_statement, g_free);
     }
 
   scroll_to_end (console);
@@ -240,8 +249,8 @@ move_left_cb (PeasGtkConsole *console,
   if (compare_input (console) != 0 || selection_starts_before_input (console))
     return FALSE;
 /*
-  peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &input);
-  peas_gtk_console_buffer_move_cursor (console->priv->buffer,
+  peas_gtk_console_buffer_get_input_iter (priv->buffer, &input);
+  peas_gtk_console_buffer_move_cursor (priv->buffer,
                                        &input,
                                        extend_selection);
 */
@@ -257,7 +266,8 @@ static gboolean
 move_home_cb (PeasGtkConsole *console,
               gboolean        extend_selection)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextMark *insert_mark;
   GtkTextIter insert, iter;
 
@@ -269,7 +279,7 @@ move_home_cb (PeasGtkConsole *console,
   insert_mark = gtk_text_buffer_get_insert (text_buffer);
   gtk_text_buffer_get_iter_at_mark (text_buffer, &insert, insert_mark);
 
-  peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &iter);
+  peas_gtk_console_buffer_get_input_iter (priv->buffer, &iter);
 
   while (g_unichar_isspace (gtk_text_iter_get_char (&iter)))
     {
@@ -278,9 +288,9 @@ move_home_cb (PeasGtkConsole *console,
     }
 
   if (gtk_text_iter_equal (&insert, &iter))
-    peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &iter);
+    peas_gtk_console_buffer_get_input_iter (priv->buffer, &iter);
 
-  peas_gtk_console_buffer_move_cursor (console->priv->buffer,
+  peas_gtk_console_buffer_move_cursor (priv->buffer,
                                        &iter, extend_selection);
 
   return TRUE;
@@ -290,7 +300,8 @@ static gboolean
 move_end_cb (PeasGtkConsole *console,
              gboolean        extend_selection)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextMark *insert_mark;
   GtkTextIter input, insert, iter, end;
 
@@ -299,7 +310,7 @@ move_end_cb (PeasGtkConsole *console,
     return FALSE;
 */
 
-  peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &input);
+  peas_gtk_console_buffer_get_input_iter (priv->buffer, &input);
 
   insert_mark = gtk_text_buffer_get_insert (text_buffer);
   gtk_text_buffer_get_iter_at_mark (text_buffer,
@@ -324,7 +335,7 @@ move_end_cb (PeasGtkConsole *console,
   if (gtk_text_iter_equal (&insert, &iter))
     gtk_text_buffer_get_end_iter (text_buffer, &iter);
 
-  peas_gtk_console_buffer_move_cursor (console->priv->buffer,
+  peas_gtk_console_buffer_move_cursor (priv->buffer,
                                        &iter, extend_selection);
 
   return TRUE;
@@ -334,10 +345,12 @@ static gboolean
 move_up_cb (PeasGtkConsole *console,
             gboolean        extend_selection)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   if (extend_selection || compare_input (console) < 0)
     return FALSE;
 
-  peas_gtk_console_history_next (console->priv->history);
+  peas_gtk_console_history_next (priv->history);
   history_changed (console);
 
   return TRUE;
@@ -347,11 +360,13 @@ static gboolean
 move_down_cb (PeasGtkConsole *console,
               gboolean        extend_selection)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   if (extend_selection || compare_input (console) < 0)
     return FALSE;
 
   /* FIXME: is this named correctly? */
-  peas_gtk_console_history_previous (console->priv->history);
+  peas_gtk_console_history_previous (priv->history);
   history_changed (console);
 
   return TRUE;
@@ -424,29 +439,33 @@ move_cursor_after_cb (GtkTextView     *text_view,
 static void
 peas_gtk_console_complete (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   /* This is gross to use! replace with a 1.x second timeout that will
    * remove itself and if its not removed and this is reached again
    * output the completion and use tab instead of space
    */
 
-  peas_gtk_console_buffer_write_completions (console->priv->buffer);
+  peas_gtk_console_buffer_write_completions (priv->buffer);
   scroll_to_end (console);
 }
 
 static void
 peas_gtk_console_execute (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   gchar *statement;
 
-  statement = peas_gtk_console_buffer_get_statement (console->priv->buffer);
+  statement = peas_gtk_console_buffer_get_statement (priv->buffer);
 
   /* Do not add the statement if it is only
    * whitespace and remove trailing whitespace.
    */
   if (g_strchomp (statement) != NULL)
-    peas_gtk_console_history_add (console->priv->history, statement);
+    peas_gtk_console_history_add (priv->history, statement);
 
-  peas_gtk_console_buffer_execute (console->priv->buffer);
+  peas_gtk_console_buffer_execute (priv->buffer);
 
   scroll_to_end (console);
 
@@ -456,26 +475,33 @@ peas_gtk_console_execute (PeasGtkConsole *console)
 static void
 peas_gtk_console_reset (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   /* We emit the reset signal on the interpreter
    * so it and the console's buffer gets reset properly
    */
-  g_signal_emit_by_name (console->priv->interpreter_signals, "reset");
+  g_signal_emit_by_name (priv->interpreter, "reset");
 }
 
 static void
 peas_gtk_console_select_all (PeasGtkConsole *console)
 {
-  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (console->priv->buffer);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+  GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (priv->buffer);
   GtkTextIter start, end;
 
   /* Select everything if the cusor is before the input marker or
-   * a selection is already in progress and it starts before the input
-   * Otherwise just select the whole input
+   * a selection is already in progress and it starts before the input.
+   * Otherwise just select the whole input.
    */
   if (compare_input (console) < 0 || selection_starts_before_input (console))
-    gtk_text_buffer_get_start_iter (text_buffer, &start);
+    {
+      gtk_text_buffer_get_start_iter (text_buffer, &start);
+    }
   else
-    peas_gtk_console_buffer_get_input_iter (console->priv->buffer, &start);
+    {
+      peas_gtk_console_buffer_get_input_iter (priv->buffer, &start);
+    }
 
   gtk_text_buffer_get_end_iter (text_buffer, &end);
 
@@ -575,11 +601,12 @@ peas_gtk_console_set_property (GObject      *object,
                                GParamSpec   *pspec)
 {
   PeasGtkConsole *console = PEAS_GTK_CONSOLE (object);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
 
   switch (prop_id)
     {
     case PROP_INTERPRETER:
-      console->priv->interpreter = g_object_ref (g_value_get_object (value));
+      priv->interpreter = g_value_dup_object (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -591,13 +618,11 @@ static void
 peas_gtk_console_constructed (GObject *object)
 {
   PeasGtkConsole *console = PEAS_GTK_CONSOLE (object);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
 
-  console->priv->interpreter_signals =
-        peas_interpreter_get_signals (console->priv->interpreter);
-
-  console->priv->buffer = peas_gtk_console_buffer_new (console->priv->interpreter);
-  gtk_text_view_set_buffer (console->priv->text_view,
-                            GTK_TEXT_BUFFER (console->priv->buffer));
+  priv->buffer = peas_gtk_console_buffer_new (priv->interpreter);
+  gtk_text_view_set_buffer (priv->text_view,
+                            GTK_TEXT_BUFFER (priv->buffer));
 
   G_OBJECT_CLASS (peas_gtk_console_parent_class)->constructed (object);
 }
@@ -606,30 +631,22 @@ static void
 peas_gtk_console_dispose (GObject *object)
 {
   PeasGtkConsole *console = PEAS_GTK_CONSOLE (object);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
 
-  /*g_clear_object (&console->priv->console_settings);*/
-  g_clear_object (&console->priv->desktop_settings);
+  /*g_clear_object (&priv->console_settings);*/
+  g_clear_object (&priv->desktop_settings);
 
-  g_clear_object (&console->priv->buffer);
-  g_clear_object (&console->priv->interpreter);
-  console->priv->interpreter_signals = NULL;
+  g_clear_object (&priv->buffer);
+  g_clear_object (&priv->interpreter);
 
-  if (console->priv->history != NULL)
+  g_clear_pointer (&priv->history,
+                   (GDestroyNotify) peas_gtk_console_history_unref);
+  g_clear_pointer (&priv->history_statement, g_free);
+
+  if (priv->scroll_id != 0)
     {
-      peas_gtk_console_history_unref (console->priv->history);
-      console->priv->history = NULL;
-    }
-
-  if (console->priv->history_statement != NULL)
-    {
-      g_free (console->priv->history_statement);
-      console->priv->history_statement = NULL;
-    }
-
-  if (console->priv->scroll_id != 0)
-    {
-      g_source_remove (console->priv->scroll_id);
-      console->priv->scroll_id = 0;
+      g_source_remove (priv->scroll_id);
+      priv->scroll_id = 0;
     }
 
   G_OBJECT_CLASS (peas_gtk_console_parent_class)->dispose (object);
@@ -666,40 +683,38 @@ peas_gtk_console_class_init (PeasGtkConsoleClass *klass)
 static void
 peas_gtk_console_init (PeasGtkConsole *console)
 {
-  console->priv = G_TYPE_INSTANCE_GET_PRIVATE (console,
-                                               PEAS_GTK_TYPE_CONSOLE,
-                                               PeasGtkConsolePrivate);
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
 
-  console->priv->history = peas_gtk_console_history_new ();
+  priv->history = peas_gtk_console_history_new ();
 
-  /*console->priv->console_settings = g_settings_new (CONSOLE_SCHEMA);*/
-  console->priv->desktop_settings = settings_try_new (DESKTOP_SCHEMA);
+  /*priv->console_settings = g_settings_new (CONSOLE_SCHEMA);*/
+  priv->desktop_settings = settings_try_new (DESKTOP_SCHEMA);
 
-  if (console->priv->desktop_settings != NULL)
-    g_signal_connect_swapped (console->priv->desktop_settings,
+  if (priv->desktop_settings != NULL)
+    g_signal_connect_swapped (priv->desktop_settings,
                               "changed::monospace-font-name",
                               (GCallback) font_settings_changed_cb,
                               console);
 
-  console->priv->sw = GTK_SCROLLED_WINDOW (gtk_scrolled_window_new (NULL, NULL));
-  gtk_box_pack_start (GTK_BOX (console), GTK_WIDGET (console->priv->sw),
+  priv->sw = GTK_SCROLLED_WINDOW (gtk_scrolled_window_new (NULL, NULL));
+  gtk_box_pack_start (GTK_BOX (console), GTK_WIDGET (priv->sw),
                       TRUE, TRUE, 0);
 
-  /*gtk_scrolled_window_set_shadow_type (console->priv->sw, GTK_SHADOW_IN);*/
-  gtk_scrolled_window_set_policy (console->priv->sw,
+  /*gtk_scrolled_window_set_shadow_type (priv->sw, GTK_SHADOW_IN);*/
+  gtk_scrolled_window_set_policy (priv->sw,
                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 
-  console->priv->text_view = GTK_TEXT_VIEW (gtk_text_view_new ());
-  gtk_text_view_set_cursor_visible (console->priv->text_view, TRUE);
-  gtk_text_view_set_wrap_mode (console->priv->text_view, GTK_WRAP_CHAR);
-  gtk_container_add (GTK_CONTAINER (console->priv->sw),
-                     GTK_WIDGET (console->priv->text_view));
+  priv->text_view = GTK_TEXT_VIEW (gtk_text_view_new ());
+  gtk_text_view_set_cursor_visible (priv->text_view, TRUE);
+  gtk_text_view_set_wrap_mode (priv->text_view, GTK_WRAP_CHAR);
+  gtk_container_add (GTK_CONTAINER (priv->sw),
+                     GTK_WIDGET (priv->text_view));
 
   /* Cause the font to be set */
   font_settings_changed_cb (console);
 
-  gtk_text_view_set_editable (console->priv->text_view, TRUE);
-  gtk_text_view_set_wrap_mode (console->priv->text_view, GTK_WRAP_WORD_CHAR);
+  gtk_text_view_set_editable (priv->text_view, TRUE);
+  gtk_text_view_set_wrap_mode (priv->text_view, GTK_WRAP_WORD_CHAR);
 
   /* GtkTextView already registers bindings which emit signals
    * for what they do. So we just connect and possibly
@@ -710,27 +725,27 @@ peas_gtk_console_init (PeasGtkConsole *console)
    * ones that GtkTextView messes up on for some reason.
    */
 
-  g_signal_connect (console->priv->text_view,
+  g_signal_connect (priv->text_view,
                     "move-cursor",
                     G_CALLBACK (move_cursor_cb),
                     console);
 
-  g_signal_connect_after (console->priv->text_view,
+  g_signal_connect_after (priv->text_view,
                           "move-cursor",
                           G_CALLBACK (move_cursor_after_cb),
                           console);
 
-  g_signal_connect (console->priv->text_view,
+  g_signal_connect (priv->text_view,
                     "key-press-event",
                     G_CALLBACK (key_press_event_cb),
                     console);
 
-  g_signal_connect (console->priv->text_view,
+  g_signal_connect (priv->text_view,
                     "select-all",
                     G_CALLBACK (select_all_cb),
                     console);
 
-  g_signal_connect (console->priv->text_view,
+  g_signal_connect (priv->text_view,
                     "toggle-cursor-visible",
                     G_CALLBACK (toggle_cursor_visible_cb),
                     console);
@@ -769,7 +784,9 @@ peas_gtk_console_new (PeasInterpreter *interpreter)
 PeasInterpreter *
 peas_gtk_console_get_interpreter (PeasGtkConsole *console)
 {
+  PeasGtkConsolePrivate *priv = GET_PRIV (console);
+
   g_return_val_if_fail (PEAS_GTK_IS_CONSOLE (console), NULL);
 
-  return console->priv->interpreter;
+  return priv->interpreter;
 }

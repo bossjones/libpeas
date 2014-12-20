@@ -186,7 +186,8 @@ testing_console_get_input_iter (PeasGtkConsole *console,
 
   prompt = gtk_text_buffer_get_text (buffer, &start, &input, FALSE);
 
-  if (g_strcmp0 (prompt, ">>> ") == 0 || g_strcmp0 (prompt, "... ") == 0)
+  if (g_strcmp0 (prompt, ">>> ") == 0 ||
+      g_strcmp0 (prompt, "... ") == 0)
     {
       *iter = input;
       success = TRUE;

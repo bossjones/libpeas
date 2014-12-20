@@ -40,7 +40,6 @@ G_BEGIN_DECLS
 
 typedef struct _PeasGtkConsole        PeasGtkConsole;
 typedef struct _PeasGtkConsoleClass   PeasGtkConsoleClass;
-typedef struct _PeasGtkConsolePrivate PeasGtkConsolePrivate;
 
 /**
  * PeasGtkConsole:
@@ -50,9 +49,6 @@ typedef struct _PeasGtkConsolePrivate PeasGtkConsolePrivate;
  */
 struct _PeasGtkConsole {
   GtkBox parent;
-
-  /*< private >*/
-  PeasGtkConsolePrivate *priv;
 };
 
 /**

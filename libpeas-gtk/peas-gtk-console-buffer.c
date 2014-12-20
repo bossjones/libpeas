@@ -27,9 +27,8 @@
 
 #include "peas-gtk-console-buffer.h"
 
-struct _PeasGtkConsoleBufferPrivate {
+typedef struct {
   PeasInterpreter *interpreter;
-  PeasInterpreterSignals *interpreter_signals;
 
   GtkTextMark *line_mark; /* What is this even for? */
   GtkTextMark *input_mark;
@@ -42,7 +41,7 @@ struct _PeasGtkConsoleBufferPrivate {
   guint in_prompt : 1;
   guint reset_whitespace : 1;
   guint write_occured_while_in_prompt : 1;
-};
+} PeasGtkConsoleBufferPrivate;
 
 /* Properties */
 enum {
@@ -53,7 +52,12 @@ enum {
 
 static GParamSpec *properties[N_PROPERTIES] = { NULL };
 
-G_DEFINE_TYPE(PeasGtkConsoleBuffer, peas_gtk_console_buffer, GTK_TYPE_TEXT_BUFFER)
+G_DEFINE_TYPE_WITH_PRIVATE(PeasGtkConsoleBuffer,
+                           peas_gtk_console_buffer,
+                           GTK_TYPE_TEXT_BUFFER)
+
+#define GET_PRIV(o) \
+  (peas_gtk_console_buffer_get_instance_private (o))
 
 static gchar *
 get_whitespace (const gchar *str)
@@ -103,29 +107,27 @@ out:
 static void
 update_statement (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
 
   if (!gtk_text_buffer_get_modified (text_buffer))
     return;
 
-  if (buffer->priv->statement != NULL)
-    {
-      g_free (buffer->priv->statement);
-      buffer->priv->statement = NULL;
+  g_clear_pointer (&priv->statement, g_free);
     }
 
-  if (buffer->priv->in_prompt)
+  if (priv->in_prompt)
     {
       GtkTextIter end, input;
 
       gtk_text_buffer_get_end_iter (text_buffer, &end);
       gtk_text_buffer_get_iter_at_mark (text_buffer,
                                         &input,
-                                        buffer->priv->input_mark);
+                                        priv->input_mark);
 
-      buffer->priv->statement = gtk_text_buffer_get_text (text_buffer,
-                                                          &input, &end,
-                                                          FALSE);
+      priv->statement = gtk_text_buffer_get_text (text_buffer,
+                                                  &input, &end,
+                                                  FALSE);
     }
 
   gtk_text_buffer_set_modified (text_buffer, FALSE);
@@ -134,6 +136,7 @@ update_statement (PeasGtkConsoleBuffer *buffer)
 static void
 write_newline (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
   GtkTextIter end, iter;
 
@@ -145,22 +148,22 @@ write_newline (PeasGtkConsoleBuffer *buffer)
 
   gtk_text_buffer_delete (text_buffer, &iter, &end);
 
-  if (buffer->priv->statement != NULL)
+  if (priv->statement != NULL)
     {
       gtk_text_buffer_insert_with_tags (text_buffer,
-                                        &end, buffer->priv->statement, -1,
-                                        buffer->priv->uneditable_tag,
+                                        &end, priv->statement, -1,
+                                        priv->uneditable_tag,
                                         NULL);
     }
 
   gtk_text_buffer_insert_with_tags (text_buffer,
                                     &end, "\n", -1,
-                                    buffer->priv->uneditable_tag,
+                                    priv->uneditable_tag,
                                     NULL);
 
   /* Maybe this should be a diffrent mark? */
   gtk_text_buffer_move_mark (text_buffer,
-                             buffer->priv->input_mark,
+                             priv->input_mark,
                              &end);
 }
 
@@ -169,10 +172,11 @@ write_text (PeasGtkConsoleBuffer *buffer,
             const gchar          *text,
             GtkTextTag           *tag)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
   GtkTextIter iter;
 
-  if (!buffer->priv->in_prompt)
+  if (!priv->in_prompt)
     {
       gtk_text_buffer_get_end_iter (text_buffer, &iter);
     }
@@ -180,41 +184,41 @@ write_text (PeasGtkConsoleBuffer *buffer,
     {
       gtk_text_buffer_get_iter_at_mark (text_buffer,
                                         &iter,
-                                        buffer->priv->input_mark);
+                                        priv->input_mark);
 
       gtk_text_iter_set_line_offset (&iter, 0);
 
-      if (buffer->priv->write_occured_while_in_prompt)
+      if (priv->write_occured_while_in_prompt)
         gtk_text_iter_backward_char (&iter);
     }
 
   gtk_text_buffer_insert_with_tags (text_buffer,
                                     &iter, text, -1,
-                                    buffer->priv->uneditable_tag,
+                                    priv->uneditable_tag,
                                     tag,
                                     NULL);
 
-  if (!buffer->priv->in_prompt)
+  if (!priv->in_prompt)
     {
       /* Should we be using a diffrent mark? */
       gtk_text_buffer_move_mark (text_buffer,
-                                 buffer->priv->input_mark,
+                                 priv->input_mark,
                                  &iter);
     }
-  else if (!buffer->priv->write_occured_while_in_prompt)
+  else if (!priv->write_occured_while_in_prompt)
     {
-      buffer->priv->write_occured_while_in_prompt = TRUE;
+      priv->write_occured_while_in_prompt = TRUE;
       gtk_text_buffer_insert_with_tags (text_buffer,
                                         &iter, "\n", -1,
-                                        buffer->priv->uneditable_tag,
+                                        priv->uneditable_tag,
                                         NULL);
     }
 }
 
 static void
-interpreter_write_cb (PeasInterpreterSignals *interpreter_signals,
-                      const gchar            *text,
-                      PeasGtkConsoleBuffer   *buffer)
+interpreter_write_cb (PeasInterpreter      *interpreter,
+                      const gchar          *text,
+                      PeasGtkConsoleBuffer *buffer)
 {
   if (text == NULL)
     return;
@@ -223,11 +227,13 @@ interpreter_write_cb (PeasInterpreterSignals *interpreter_signals,
 }
 
 static void
-interpreter_write_error_cb (PeasInterpreterSignals *interpreter_signals,
-                            const gchar            *text,
-                            PeasGtkConsoleBuffer   *buffer)
+interpreter_write_error_cb (PeasInterpreter      *interpreter,
+                            const gchar          *text,
+                            PeasGtkConsoleBuffer *buffer)
 {
-  buffer->priv->reset_whitespace = TRUE;
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
+
+  priv->reset_whitespace = TRUE;
 
   if (text == NULL)
     return;
@@ -237,9 +243,10 @@ interpreter_write_error_cb (PeasInterpreterSignals *interpreter_signals,
 }
 
 static void
-interpreter_reset_cb (PeasInterpreterSignals *interpreter_signals,
-                      PeasGtkConsoleBuffer   *buffer)
+interpreter_reset_cb (PeasInterpreter      *interpreter,
+                      PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
   GtkTextIter start, end;
 
@@ -249,10 +256,10 @@ interpreter_reset_cb (PeasInterpreterSignals *interpreter_signals,
   gtk_text_buffer_delete (text_buffer, &start, &end);
 
   gtk_text_buffer_move_mark (text_buffer,
-                             buffer->priv->line_mark,
+                             priv->line_mark,
                              &end);
   gtk_text_buffer_move_mark (text_buffer,
-                             buffer->priv->input_mark,
+                             priv->input_mark,
                              &end);
 
   peas_gtk_console_buffer_write_prompt (buffer);
@@ -265,11 +272,12 @@ peas_gtk_console_buffer_get_property (GObject    *object,
                                       GParamSpec *pspec)
 {
   PeasGtkConsoleBuffer *buffer = PEAS_GTK_CONSOLE_BUFFER (object);
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
 
   switch (prop_id)
     {
     case PROP_INTERPRETER:
-      g_value_set_object (value, buffer->priv->interpreter);
+      g_value_set_object (value, priv->interpreter);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -284,11 +292,12 @@ peas_gtk_console_buffer_set_property (GObject      *object,
                                       GParamSpec   *pspec)
 {
   PeasGtkConsoleBuffer *buffer = PEAS_GTK_CONSOLE_BUFFER (object);
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
 
   switch (prop_id)
     {
     case PROP_INTERPRETER:
-      buffer->priv->interpreter = g_object_ref (g_value_get_object (value));
+      priv->interpreter = g_object_ref (g_value_get_object (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -300,49 +309,50 @@ static void
 peas_gtk_console_buffer_constructed (GObject *object)
 {
   PeasGtkConsoleBuffer *buffer = PEAS_GTK_CONSOLE_BUFFER (object);
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
   GtkTextIter end;
   const GHashTable *namespace_;
 
-  buffer->priv->interpreter_signals =
-        peas_interpreter_get_signals (buffer->priv->interpreter);
-
   gtk_text_buffer_set_modified (text_buffer, FALSE);
   gtk_text_buffer_get_end_iter (text_buffer, &end);
 
-  buffer->priv->line_mark = gtk_text_buffer_create_mark (text_buffer,
+  priv->line_mark = gtk_text_buffer_create_mark (text_buffer,
                                                          NULL, &end, TRUE);
-  buffer->priv->input_mark = gtk_text_buffer_create_mark (text_buffer,
+  priv->input_mark = gtk_text_buffer_create_mark (text_buffer,
                                                           NULL, &end, TRUE);
 
-  buffer->priv->uneditable_tag =
+  priv->uneditable_tag =
       gtk_text_buffer_create_tag (text_buffer, NULL,
                                   "editable", FALSE,
                                   "wrap-mode", GTK_WRAP_CHAR,
                                   NULL);
-  buffer->priv->completion_tag =
+  priv->completion_tag =
       gtk_text_buffer_create_tag (text_buffer, NULL,
                                   "wrap-mode", GTK_WRAP_WORD_CHAR,
                                   NULL);
 
-  g_signal_connect (buffer->priv->interpreter_signals,
-                    "write",
-                    G_CALLBACK (interpreter_write_cb),
-                    buffer);
-  g_signal_connect (buffer->priv->interpreter_signals,
-                    "write-error",
-                    G_CALLBACK (interpreter_write_error_cb),
-                    buffer);
+  g_signal_connect_object (priv->interpreter,
+                           "write",
+                           G_CALLBACK (interpreter_write_cb),
+                           buffer,
+                           0);
+  g_signal_connect_object (priv->interpreter,
+                           "write-error",
+                           G_CALLBACK (interpreter_write_error_cb),
+                           buffer,
+                           0);
 
-  /* We need to get the reseted prompt which is only
+  /* We need to get the updated prompt which is only
    * available after the interpreter has been reset.
    */
-  g_signal_connect_after (buffer->priv->interpreter_signals,
-                          "reset",
-                          G_CALLBACK (interpreter_reset_cb),
-                          buffer);
+  g_signal_connect_object (priv->interpreter,
+                           "reset",
+                           G_CALLBACK (interpreter_reset_cb),
+                           buffer,
+                           G_CONNECT_AFTER);
 
-  namespace_ = peas_interpreter_get_namespace (buffer->priv->interpreter);
+  namespace_ = peas_interpreter_get_namespace (priv->interpreter);
 
   if (namespace_ != NULL)
     {
@@ -357,9 +367,13 @@ peas_gtk_console_buffer_constructed (GObject *object)
           GString *string;
 
           if (g_hash_table_size ((GHashTable *) namespace_) == 1)
-            string = g_string_new (_("Predefined variable: "));
+            {
+              string = g_string_new (_("Predefined variable: "));
+            }
           else
-            string = g_string_new (_("Predefined variables: "));
+            {
+              string = g_string_new (_("Predefined variables: "));
+            }
 
           g_string_append_printf (string, "'%s'", namespace_key);
 
@@ -384,29 +398,10 @@ static void
 peas_gtk_console_buffer_dispose (GObject *object)
 {
   PeasGtkConsoleBuffer *buffer = PEAS_GTK_CONSOLE_BUFFER (object);
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
 
-  if (buffer->priv->interpreter_signals != NULL)
-    {
-      g_signal_handlers_disconnect_by_func (buffer->priv->interpreter_signals,
-                                            G_CALLBACK (interpreter_write_cb),
-                                            buffer);
-      g_signal_handlers_disconnect_by_func (buffer->priv->interpreter_signals,
-                                            G_CALLBACK (interpreter_write_error_cb),
-                                            buffer);
-      g_signal_handlers_disconnect_by_func (buffer->priv->interpreter_signals,
-                                            G_CALLBACK (interpreter_reset_cb),
-                                            buffer);
-
-      buffer->priv->interpreter_signals = NULL;
-    }
-
-  if (buffer->priv->statement != NULL)
-    {
-      g_free (buffer->priv->statement);
-      buffer->priv->statement = NULL;
-    }
-
-  g_clear_object (&buffer->priv->interpreter);
+  g_clear_pointer (&priv->statement, g_free);
+  g_clear_object (&priv->interpreter);
 }
 
 static void
@@ -434,15 +429,11 @@ peas_gtk_console_buffer_class_init (PeasGtkConsoleBufferClass *klass)
                          G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPERTIES, properties);
-  g_type_class_add_private (klass, sizeof (PeasGtkConsoleBufferPrivate));
 }
 
 static void
 peas_gtk_console_buffer_init (PeasGtkConsoleBuffer *buffer)
 {
-  buffer->priv = G_TYPE_INSTANCE_GET_PRIVATE (buffer,
-                                              PEAS_GTK_TYPE_CONSOLE_BUFFER,
-                                              PeasGtkConsoleBufferPrivate);
 }
 
 /**
@@ -474,9 +465,11 @@ peas_gtk_console_buffer_new (PeasInterpreter *interpreter)
 PeasInterpreter *
 peas_gtk_console_buffer_get_interpreter (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
+
   g_return_val_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer), NULL);
 
-  return buffer->priv->interpreter;
+  return priv->interpreter;
 }
 
 /**
@@ -488,34 +481,35 @@ peas_gtk_console_buffer_get_interpreter (PeasGtkConsoleBuffer *buffer)
 void
 peas_gtk_console_buffer_execute (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   gchar *whitespace;
   gboolean success;
 
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));
-  g_return_if_fail (buffer->priv->in_prompt);
+  g_return_if_fail (priv->in_prompt);
 
   update_statement (buffer);
 
-  whitespace = get_whitespace (buffer->priv->statement);
+  whitespace = get_whitespace (priv->statement);
 
-  buffer->priv->in_prompt = FALSE;
-  buffer->priv->reset_whitespace = FALSE;
-  buffer->priv->write_occured_while_in_prompt = FALSE;
+  priv->in_prompt = FALSE;
+  priv->reset_whitespace = FALSE;
+  priv->write_occured_while_in_prompt = FALSE;
 
   write_newline (buffer);
 
-  success = peas_interpreter_execute (buffer->priv->interpreter,
-                                      buffer->priv->statement);
+  success = peas_interpreter_execute (priv->interpreter,
+                                      priv->statement);
 
   /* Reset also resets the whitespace */
-  if (buffer->priv->in_prompt)
-    buffer->priv->reset_whitespace = TRUE;
+  if (priv->in_prompt)
+    priv->reset_whitespace = TRUE;
 
   /* Do not cause a double prompt if reset was emitted */
-  if (!buffer->priv->in_prompt)
+  if (!priv->in_prompt)
     peas_gtk_console_buffer_write_prompt (buffer);
 
-  if (success && !buffer->priv->reset_whitespace)
+  if (success && !priv->reset_whitespace)
     peas_gtk_console_buffer_set_statement (buffer, whitespace);
 
   g_free (whitespace);
@@ -530,6 +524,7 @@ peas_gtk_console_buffer_execute (PeasGtkConsoleBuffer *buffer)
 void
 peas_gtk_console_buffer_write_prompt (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer = GTK_TEXT_BUFFER (buffer);
   GtkTextIter input, end;
   gchar *prompt;
@@ -538,7 +533,7 @@ peas_gtk_console_buffer_write_prompt (PeasGtkConsoleBuffer *buffer)
 
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));
 
-  prompt = peas_interpreter_prompt (buffer->priv->interpreter);
+  prompt = peas_interpreter_prompt (priv->interpreter);
 
   /* Is this enough to always be correctly on a newline? */
   peas_gtk_console_buffer_get_input_iter (buffer, &input);
@@ -551,15 +546,15 @@ peas_gtk_console_buffer_write_prompt (PeasGtkConsoleBuffer *buffer)
     {
       gtk_text_buffer_insert_with_tags (text_buffer,
                                         &end, prompt, -1,
-                                        buffer->priv->uneditable_tag,
+                                        priv->uneditable_tag,
                                         NULL);
     }
 
   gtk_text_buffer_move_mark (text_buffer,
-                             buffer->priv->input_mark,
+                             priv->input_mark,
                              &end);
 
-  buffer->priv->in_prompt = TRUE;
+  priv->in_prompt = TRUE;
 
   g_free (prompt);
 }
@@ -585,27 +580,28 @@ skip_whitespace (const gchar *str)
 void
 peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   gchar *whitespace;
   GString *new_statement;
   GList *completions;
   const gchar *str;
 
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));
-  g_return_if_fail (buffer->priv->in_prompt);
+  g_return_if_fail (priv->in_prompt);
 
   update_statement (buffer);
 
-  if (buffer->priv->statement == NULL)
-    buffer->priv->statement = g_strdup ("");
+  if (priv->statement == NULL)
+    priv->statement = g_strdup ("");
 
   /* Do not strip the statement when sending it for completion */
-  completions = peas_interpreter_complete (buffer->priv->interpreter,
-                                           buffer->priv->statement);
+  completions = peas_interpreter_complete (priv->interpreter,
+                                           priv->statement);
 
   if (completions == NULL)
     return;
 
-  whitespace = get_whitespace (buffer->priv->statement);
+  whitespace = get_whitespace (priv->statement);
   new_statement = g_string_new (whitespace);
 
   if (completions->next == NULL)
@@ -654,7 +650,7 @@ peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
 
       filler = g_strnfill (max_len, ' ');
 
-      buffer->priv->in_prompt = FALSE;
+      priv->in_prompt = FALSE;
       write_newline (buffer);
 
       for (completion = completions, i = 0; completion != NULL;
@@ -671,7 +667,7 @@ peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
 
           len = g_array_index (data, gsize, i++);
 
-          write_text (buffer, str, buffer->priv->completion_tag);
+          write_text (buffer, str, priv->completion_tag);
         }
 
       /* Go back to prompt mode */
@@ -720,7 +716,7 @@ peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
       texts[i] = NULL;
 
       /* Write the completions after the prompt */
-      buffer->priv->in_prompt = FALSE;
+      priv->in_prompt = FALSE;
       write_newline (buffer);
 
       write_text (buffer, completions_str->str, NULL);
@@ -746,14 +742,6 @@ peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
 
   g_list_free_full (completions, g_object_unref);
 }
-
-/* Weird to return a copy of the string
- * but it reduces errors because the
- * statement would change behind your back
- * quite often and thus cause segfaults.
- *
- * This is also what GtkTextBuffer does.
- */
 /**
  * peas_gtk_console_buffer_get_statement:
  * @buffer: A #PeasGtkConsoleBuffer.
@@ -765,11 +753,20 @@ peas_gtk_console_buffer_write_completions (PeasGtkConsoleBuffer *buffer)
 gchar *
 peas_gtk_console_buffer_get_statement (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
+
   g_return_val_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer), NULL);
 
   update_statement (buffer);
 
-  return g_strdup (buffer->priv->statement);
+  /* Weird to return a copy of the string
+   * but it reduces errors because the
+   * statement can change behind your back
+   * quite often and thus cause segfaults.
+   *
+   * This is also what GtkTextBuffer does.
+   */
+  return g_strdup (priv->statement);
 }
 
 /**
@@ -785,17 +782,18 @@ void
 peas_gtk_console_buffer_set_statement (PeasGtkConsoleBuffer *buffer,
                                        const gchar          *statement)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer;
   GtkTextIter end, input;
 
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));
   g_return_if_fail (statement != NULL);
-  g_return_if_fail (buffer->priv->in_prompt);
+  g_return_if_fail (priv->in_prompt);
 
   text_buffer = GTK_TEXT_BUFFER (buffer);
 
-  if (buffer->priv->statement != NULL)
-    g_free (buffer->priv->statement);
+  if (priv->statement != NULL)
+    g_free (priv->statement);
 
   gtk_text_buffer_get_end_iter (text_buffer, &end);
   peas_gtk_console_buffer_get_input_iter (buffer, &input);
@@ -803,7 +801,7 @@ peas_gtk_console_buffer_set_statement (PeasGtkConsoleBuffer *buffer,
   gtk_text_buffer_delete (text_buffer, &input, &end);
   gtk_text_buffer_insert (text_buffer, &end, statement, -1);
 
-  buffer->priv->statement = g_strdup (statement);
+  priv->statement = g_strdup (statement);
 
   gtk_text_buffer_set_modified (text_buffer, FALSE);
 }
@@ -820,9 +818,11 @@ peas_gtk_console_buffer_set_statement (PeasGtkConsoleBuffer *buffer,
 GtkTextMark *
 peas_gtk_console_buffer_get_input_mark (PeasGtkConsoleBuffer *buffer)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
+
   g_return_val_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer), NULL);
 
-  return buffer->priv->input_mark;
+  return priv->input_mark;
 }
 
 /**
@@ -836,12 +836,14 @@ void
 peas_gtk_console_buffer_get_input_iter (PeasGtkConsoleBuffer *buffer,
                                         GtkTextIter          *iter)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
+
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));
   g_return_if_fail (iter != NULL);
 
   gtk_text_buffer_get_iter_at_mark (GTK_TEXT_BUFFER (buffer),
                                     iter,
-                                    buffer->priv->input_mark);
+                                    priv->input_mark);
 }
 
 /**
@@ -859,6 +861,7 @@ peas_gtk_console_buffer_move_cursor (PeasGtkConsoleBuffer *buffer,
                                      GtkTextIter          *iter,
                                      gboolean              extend_selection)
 {
+  PeasGtkConsoleBufferPrivate *priv = GET_PRIV (buffer);
   GtkTextBuffer *text_buffer;
 
   g_return_if_fail (PEAS_GTK_IS_CONSOLE_BUFFER (buffer));

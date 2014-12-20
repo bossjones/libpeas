@@ -62,19 +62,12 @@
  * Anything else is an invalid completion and will cause an assert.
  */
 
-struct _TestingInterpreterPrivate {
+typedef struct {
   GHashTable *namespace_;
-  PeasInterpreterSignals *signals;
 
   GString *code;
   gboolean in_block;
-};
-
-/* Properties */
-enum {
-  PROP_0,
-  PROP_SIGNALS
-};
+} TestingInterpreterPrivate;
 
 static void peas_interpreter_iface_init (PeasInterpreterInterface *iface);
 
@@ -82,8 +75,12 @@ G_DEFINE_TYPE_EXTENDED (TestingInterpreter,
                         testing_interpreter,
                         G_TYPE_OBJECT,
                         0,
+                        G_ADD_PRIVATE (TestingInterpreter)
                         G_IMPLEMENT_INTERFACE (PEAS_TYPE_INTERPRETER,
                                                peas_interpreter_iface_init))
+
+#define GET_PRIV(o) \
+  (testing_interpreter_get_instance_private (o))
 
 static void
 value_free (gpointer value)
@@ -92,22 +89,25 @@ value_free (gpointer value)
 }
 
 static void
-reset_cb (PeasInterpreterSignals *signals,
-          TestingInterpreter     *interpreter)
+reset_cb (PeasInterpreter    *peas_interpreter,
+          TestingInterpreter *interpreter)
 {
-  interpreter->priv->in_block = FALSE;
-  g_string_truncate (interpreter->priv->code, 0);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
+
+  priv->in_block = FALSE;
+  g_string_truncate (priv->code, 0);
 }
 
 static gchar *
 testing_interpreter_prompt (PeasInterpreter *peas_interpreter)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (peas_interpreter);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
 
-  if (!interpreter->priv->in_block)
-    return g_strdup (">>> ");
-  else
+  if (priv->in_block)
     return g_strdup ("... ");
+
+  return g_strdup (">>> ");
 };
 
 static gboolean
@@ -115,6 +115,7 @@ testing_interpreter_execute (PeasInterpreter *peas_interpreter,
                              const gchar     *code)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (peas_interpreter);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
   const gchar *command;
 
   g_assert (code != NULL);
@@ -135,14 +136,10 @@ testing_interpreter_execute (PeasInterpreter *peas_interpreter,
       return TRUE;
     }
 
-  if (g_str_has_prefix (command, "block"))
-    {
-      interpreter->priv->in_block = TRUE;
-    }
-  else
-    {
-      interpreter->priv->in_block = FALSE;
+  priv->in_block = g_str_has_prefix (command, "block");
 
+  if (!priv->in_block)
+    {
       if (g_str_has_prefix (command, "print "))
         {
           peas_interpreter_write (peas_interpreter,
@@ -161,10 +158,10 @@ testing_interpreter_execute (PeasInterpreter *peas_interpreter,
         }
     }
 
-  if (interpreter->priv->code->len != 0)
-    g_string_append_c (interpreter->priv->code, '\n');
+  if (priv->code->len != 0)
+    g_string_append_c (priv->code, '\n');
 
-  g_string_append (interpreter->priv->code, code);
+  g_string_append (priv->code, code);
 
   return TRUE;
 }
@@ -234,8 +231,9 @@ static const GHashTable *
 testing_interpreter_get_namespace (PeasInterpreter *peas_interpreter)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (peas_interpreter);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
 
-  return interpreter->priv->namespace_;
+  return priv->namespace_;
 }
 
 static void
@@ -243,17 +241,18 @@ testing_interpreter_set_namespace (PeasInterpreter  *peas_interpreter,
                                    const GHashTable *namespace_)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (peas_interpreter);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
   GHashTableIter iter;
   const gchar *key;
   GValue *value;
 
-  g_hash_table_remove_all (interpreter->priv->namespace_);
+  g_hash_table_remove_all (priv->namespace_);
 
   g_hash_table_iter_init (&iter, (GHashTable *) namespace_);
   while (g_hash_table_iter_next (&iter,
                                  (gpointer *) &key, (gpointer *) &value))
     {
-      g_hash_table_insert (interpreter->priv->namespace_,
+      g_hash_table_insert (priv->namespace_,
                            g_strdup (key),
                            g_boxed_copy (G_TYPE_VALUE, value));
     }
@@ -270,61 +269,18 @@ peas_interpreter_iface_init (PeasInterpreterInterface *iface)
 }
 
 static void
-testing_interpreter_set_property (GObject      *object,
-                                  guint         prop_id,
-                                  const GValue *value,
-                                  GParamSpec   *pspec)
-{
-  TestingInterpreter *interpreter = TESTING_INTERPRETER (object);
-
-  switch (prop_id)
-    {
-    case PROP_SIGNALS:
-      interpreter->priv->signals = g_value_dup_object (value);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-    }
-}
-
-static void
-testing_interpreter_get_property (GObject    *object,
-                                  guint       prop_id,
-                                  GValue     *value,
-                                  GParamSpec *pspec)
-{
-  TestingInterpreter *interpreter = TESTING_INTERPRETER (object);
-
-  switch (prop_id)
-    {
-    case PROP_SIGNALS:
-      g_value_set_object (value, interpreter->priv->signals);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
-    }
-}
-
-static void
 testing_interpreter_dispose (GObject *object)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (object);
 
-  if (interpreter->priv->namespace_ != NULL)
-    {
-      g_hash_table_unref (interpreter->priv->namespace_);
-      interpreter->priv->namespace_ = NULL;
-    }
+  g_clear_pointer (&priv->namespace,
+                   (GDestroyNotify) g_hash_table_unref);
 
-  if (interpreter->priv->code != NULL)
+  if (priv->code != NULL)
     {
-      g_string_free (interpreter->priv->code, TRUE);
-      interpreter->priv->code = NULL;
+      g_string_free (priv->code, TRUE);
+      priv->code = NULL;
     }
-
-  g_clear_object (&interpreter->priv->signals);
 
   G_OBJECT_CLASS (testing_interpreter_parent_class)->dispose (object);
 }
@@ -334,13 +290,11 @@ testing_interpreter_constructed (GObject *object)
 {
   TestingInterpreter *interpreter = TESTING_INTERPRETER (object);
 
-  if (interpreter->priv->signals == NULL)
-    interpreter->priv->signals = peas_interpreter_signals_new ();
-
-  g_signal_connect (interpreter->priv->signals,
-                    "reset",
-                    G_CALLBACK (reset_cb),
-                    interpreter);
+  g_signal_connect_object (interpreter,
+                           "reset",
+                           G_CALLBACK (reset_cb),
+                           interpreter,
+                           0);
 
   G_OBJECT_CLASS (testing_interpreter_parent_class)->constructed (object);
 }
@@ -350,29 +304,19 @@ testing_interpreter_class_init (TestingInterpreterClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
-  object_class->get_property = testing_interpreter_get_property;
-  object_class->set_property = testing_interpreter_set_property;
   object_class->dispose = testing_interpreter_dispose;
   object_class->constructed = testing_interpreter_constructed;
-
-  g_object_class_override_property (object_class, PROP_SIGNALS, "signals");
-
-  g_type_class_add_private (klass, sizeof (TestingInterpreterPrivate));
 }
 
 static void
 testing_interpreter_init (TestingInterpreter *interpreter)
 {
-  interpreter->priv = G_TYPE_INSTANCE_GET_PRIVATE (interpreter,
-                                                   TESTING_TYPE_INTERPRETER,
-                                                   TestingInterpreterPrivate);
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
 
-  interpreter->priv->in_block = FALSE;
-  interpreter->priv->code = g_string_new ("");
-  interpreter->priv->namespace_ = g_hash_table_new_full (g_str_hash,
-                                                         g_str_equal,
-                                                         g_free,
-                                                         value_free);
+  priv->in_block = FALSE;
+  priv->code = g_string_new ("");
+  priv->namespace_ = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                            g_free, value_free);
 }
 
 PeasInterpreter *
@@ -384,7 +328,9 @@ testing_interpreter_new (void)
 const gchar *
 testing_interpreter_get_code (TestingInterpreter *interpreter)
 {
+  TestingInterpreterPrivate *priv = GET_PRIVATE (interpreter);
+
   g_return_val_if_fail (TESTING_IS_INTERPRETER (interpreter), NULL);
 
-  return interpreter->priv->code->str;
+  return priv->code->str;
 }

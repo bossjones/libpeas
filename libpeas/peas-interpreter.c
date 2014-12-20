@@ -33,31 +33,77 @@
  * that should be interpreters.
  **/
 
+/* s */
+enum {
+  WRITE,
+  WRITE_ERROR,
+  RESET,
+  LAST_SIGNAL
+};
+
 G_DEFINE_INTERFACE(PeasInterpreter, peas_interpreter, G_TYPE_OBJECT)
 
 void
 peas_interpreter_default_init (PeasInterpreterInterface *iface)
 {
+  GType the_type = G_TYPE_FROM_INTERFACE (iface);
   static gboolean initialized = FALSE;
 
   if (initialized)
     return;
 
   /**
-   * PeasInterpreter:signals:
+   * PeasInterpreter::write:
+   * @signals: A #PeasInterpreters.
+   * @text: the text to write.
    *
-   * The signals of the interpreter.
-   *
-   * Note: this is only needed because libpeas' cannot proxy signals.
+   * The "write" signal is used by a console to write
+   * @text to its buffer.
    */
-  g_object_interface_install_property (iface,
-                                       g_param_spec_object ("signals",
-                                                            "Signals",
-                                                            "Signals of the interpreter",
-                                                            PEAS_TYPE_INTERPRETER_SIGNALS,
-                                                            G_PARAM_READWRITE |
-                                                            G_PARAM_CONSTRUCT_ONLY |
-                                                            G_PARAM_STATIC_STRINGS));
+  signals[WRITE] =
+    g_signal_new ("write",
+                  the_type,
+                  G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+                  G_STRUCT_OFFSET (PeasInterpreter, write),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE,
+                  1, G_TYPE_STRING);
+
+  /**
+   * PeasInterpreter::write-error:
+   * @signals: A #PeasInterpreters.
+   * @text: the text to write as an error.
+   *
+   * The "write-error" signal is used by a console to write
+   * @text as an error message to its buffer.
+   */
+  signals[WRITE_ERROR] =
+    g_signal_new ("write-error",
+                  the_type,
+                  G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+                  G_STRUCT_OFFSET (PeasInterpreter, write_error),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE,
+                  1, G_TYPE_STRING);
+
+  /**
+   * PeasInterpreter::reset:
+   * @signals: A #PeasInterpreters.
+   *
+   * The "reset" signal is used by a console to
+   * reset its internal state.
+   *
+   * The interpreter should also connect to this signal to
+   * properly reset when a reset keybinding is activated.
+   */
+  signals[RESET] =
+    g_signal_new ("reset",
+                  the_type,
+                  G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION,
+                  G_STRUCT_OFFSET (PeasInterpreter, reset),
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE,
+                  0);
 
   initialized = TRUE;
 }
@@ -155,8 +201,7 @@ peas_interpreter_write (PeasInterpreter *interpreter,
   g_return_if_fail (PEAS_IS_INTERPRETER (interpreter));
   g_return_if_fail (text != NULL);
 
-  g_signal_emit_by_name (peas_interpreter_get_signals (interpreter),
-                         "write", text);
+  g_signal_emit (interpreter, signals[WRITE], 0, text);
 }
 
 /**
@@ -173,8 +218,8 @@ peas_interpreter_write_error (PeasInterpreter *interpreter,
   g_return_if_fail (PEAS_IS_INTERPRETER (interpreter));
   g_return_if_fail (text != NULL);
 
-  g_signal_emit_by_name (peas_interpreter_get_signals (interpreter),
-                         "write-error", text);
+
+  g_signal_emit (interpreter, signals[WRITE_ERROR], 0, text);
 }
 
 /**
@@ -188,7 +233,7 @@ peas_interpreter_reset (PeasInterpreter *interpreter)
 {
   g_return_if_fail (PEAS_IS_INTERPRETER (interpreter));
 
-  g_signal_emit_by_name (peas_interpreter_get_signals (interpreter), "reset");
+  g_signal_emit (interpreter, signals[RESET], 0);
 }
 
 /**
@@ -214,7 +259,6 @@ peas_interpreter_get_namespace (PeasInterpreter *interpreter)
   return NULL;
 }
 
-
 /**
  * peas_interpreter_set_namespace:
  * @interpreter: A #PeasInterpeter.
@@ -237,31 +281,4 @@ peas_interpreter_set_namespace (PeasInterpreter  *interpreter,
   iface = PEAS_INTERPRETER_GET_IFACE (interpreter);
   if (iface->set_namespace != NULL)
     iface->set_namespace (interpreter, namespace_);
-}
-
-/**
- * peas_interpreter_get_signals:
- * @interpreter: A #PeasInterpreter.
- *
- * Gets the #PeasInterpreterSignals that @interpreter's
- * signals are emitted on.
- *
- * This is done because libpeas cannot proxy signals.
- *
- * Returns: (transfer none): the interpreter's signals object.
- */
-PeasInterpreterSignals *
-peas_interpreter_get_signals (PeasInterpreter *interpreter)
-{
-  PeasInterpreterSignals *signals;
-
-  g_return_val_if_fail (PEAS_IS_INTERPRETER (interpreter), NULL);
-
-  g_object_get (G_OBJECT (interpreter),
-                "signals", &signals,
-                NULL);
-
-  g_object_unref (signals);
-
-  return signals;
 }

@@ -37,12 +37,9 @@ G_BEGIN_DECLS
 
 typedef struct _TestingInterpreter        TestingInterpreter;
 typedef struct _TestingInterpreterClass   TestingInterpreterClass;
-typedef struct _TestingInterpreterPrivate TestingInterpreterPrivate;
 
 struct _TestingInterpreter {
   GObject parent;
-
-  TestingInterpreterPrivate *priv;
 };
 
 struct _TestingInterpreterClass {

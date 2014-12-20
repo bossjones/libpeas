@@ -38,7 +38,6 @@ G_BEGIN_DECLS
 
 typedef struct _PeasInterpreterCompletion         PeasInterpreterCompletion;
 typedef struct _PeasInterpreterCompletionClass    PeasInterpreterCompletionClass;
-typedef struct _PeasInterpreterCompletionPrivate  PeasInterpreterCompletionPrivate;
 
 /**
  * PeasInterpreterCompletion:
@@ -48,8 +47,6 @@ typedef struct _PeasInterpreterCompletionPrivate  PeasInterpreterCompletionPriva
  */
 struct _PeasInterpreterCompletion {
   GObject parent;
-
-  PeasInterpreterCompletionPrivate *priv;
 };
 
 /**

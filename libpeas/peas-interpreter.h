@@ -25,7 +25,6 @@
 #include <glib-object.h>
 
 #include "peas-interpreter-completion.h"
-#include "peas-interpreter-signals.h"
 
 G_BEGIN_DECLS
 
@@ -55,6 +54,10 @@ typedef struct _PeasInterpreterInterface  PeasInterpreterInterface;
  * @prompt: Get the prompt.
  * @get_namespace: Gets the namespace.
  * @set_namespace: Sets the namespace.
+ * @write: Signal class handler for the #PeasInterpreter::write signal.
+ * @write_error: Signal class handler for the
+ *               #PeasInterpreter::write_error signal.
+ * @reset: Signal class handler for the #PeasInterpreter::reset signal.
  *
  * Provides and iterface for interpreters.
  */
@@ -72,8 +75,15 @@ struct _PeasInterpreterInterface {
   void               (*set_namespace)   (PeasInterpreter  *interpreter,
                                          const GHashTable *namespace_);
 
+  /* Signals */
+  void    (*write)                      (PeasInterpreter  *interpreter,
+                                         const gchar      *text);
+  void    (*write_error)                (PeasInterpreter  *interpreter,
+                                         const gchar      *text);
+  void    (*reset)                      (PeasInterpreter  *interpreter);
+
   /*< private >*/
-  gpointer padding[8];
+  gpointer padding[16];
 };
 
 /*
@@ -97,9 +107,6 @@ const GHashTable *
             peas_interpreter_get_namespace (PeasInterpreter  *interpreter);
 void        peas_interpreter_set_namespace (PeasInterpreter  *interpreter,
                                             const GHashTable *namespace_);
-
-PeasInterpreterSignals *
-            peas_interpreter_get_signals   (PeasInterpreter  *interpreter);
 
 G_END_DECLS
 

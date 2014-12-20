@@ -33,16 +33,12 @@ import traceback
 
 from gi.repository import GObject, Peas
 
+
 class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
-    __gtype_name__ = "PeasInterpreterPython3"
-
-    signals = GObject.property(type=Peas.InterpreterSignals)
-
     def __init__(self):
         GObject.Object.__init__(self)
 
-        self.signals = Peas.InterpreterSignals.new()
-        self.signals.connect("reset", self.reset)
+        self.connect("reset", self.on_reset)
 
         self._stdout = FakeFile(self.write, sys.stdout.fileno())
         self._stderr = FakeFile(self.write_error, sys.stderr.fileno())
@@ -89,7 +85,7 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
                 exec(self._code, self._namespace)
 
         except SystemExit:
-            self.signals.emit("reset")
+            self.reset()
 
         except:
             # Cause only one write-error to be emitted,
@@ -122,7 +118,7 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
                 text_prefix = code[:-len(word)]
 
             for match in self._completer.global_matches(word):
-                # The "C" messes with GTK+'s text wrapping
+                # The "(" messes with GTK+'s text wrapping
                 if match.endswith("("):
                     match = match[:-1]
                 else:
@@ -147,9 +143,10 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
         else:
             self._original_namespace = namespace
 
-        self.reset()
+        self.on_reset()
 
-    def reset(self, unused=None):
+    # Isn't this automatically setup for up?
+    def on_reset(self, unused=None):
         self._code = ""
         self._in_block = False
         self._in_multiline = False
@@ -168,12 +165,6 @@ class PeasInterpreterPython3(GObject.Object, Peas.Interpreter):
 
         except:
             pass
-
-    def write(self, text):
-        self.signals.emit("write", text)
-
-    def write_error(self, text):
-        self.signals.emit("write-error", text)
 
 
 class FakeFile:

@@ -40,13 +40,9 @@ G_BEGIN_DECLS
 
 typedef struct _PeasGtkConsoleBuffer        PeasGtkConsoleBuffer;
 typedef struct _PeasGtkConsoleBufferClass   PeasGtkConsoleBufferClass;
-typedef struct _PeasGtkConsoleBufferPrivate PeasGtkConsoleBufferPrivate;
 
 struct _PeasGtkConsoleBuffer {
   GtkTextBuffer parent;
-
-  /*< private >*/
-  PeasGtkConsoleBufferPrivate *priv;
 };
 
 struct _PeasGtkConsoleBufferClass {
